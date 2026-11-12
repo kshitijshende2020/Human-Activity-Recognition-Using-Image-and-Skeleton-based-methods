@@ -1,0 +1,13 @@
+,backhand,backhand2hands,backhand_slice,backhand_volley,flat_service,forehand_flat,forehand_openstands,forehand_slice,forehand_volley,kick_service,slice_service,smash
+backhand,22,0,0,0,0,0,2,0,0,0,0,0
+backhand2hands,0,23,0,0,0,1,0,0,0,0,0,0
+backhand_slice,2,0,13,9,0,0,0,0,0,0,0,0
+backhand_volley,0,0,2,19,0,0,1,0,2,0,0,0
+flat_service,0,0,0,0,6,0,0,0,0,4,12,2
+forehand_flat,0,2,0,0,0,20,0,2,0,0,0,0
+forehand_openstands,0,1,0,0,0,5,18,0,0,0,0,0
+forehand_slice,0,0,0,0,0,0,0,19,5,0,0,0
+forehand_volley,0,0,0,0,0,1,0,7,14,2,0,0
+kick_service,0,0,0,0,2,0,1,0,0,10,9,2
+slice_service,0,3,0,0,3,0,0,0,0,3,12,3
+smash,0,0,0,0,0,0,3,0,0,2,1,18

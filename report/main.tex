@@ -1,0 +1,347 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[a4paper,left=2cm,right=2cm,top=2.3cm,bottom=2.5cm]{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\setlength{\parindent}{1cm}
+\onehalfspacing
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\graphicspath{{figures/}}
+\title{Human Activity Recognition Using Image and Skeleton-Based Methods}
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+\vspace*{0.5cm}
+{\large\textbf{Mini Project Report}}\\[0.35cm]
+{\large on}\\[0.45cm]
+{\LARGE\textbf{Human Activity Recognition Using Image and Skeleton-Based Methods}}\\[0.9cm]
+{\small Submitted by}\\[0.3cm]
+\begin{tabular}{lc}
+\textbf{Kothapally Anjan Reddy} & 23BCS071 \\
+\textbf{Babhale Rohan Laxmikant} & 23BCS026 \\
+\textbf{Kshitij Shende} & 23BCS075
+\end{tabular}\\[0.8cm]
+{\small Under the guidance of}\\[0.2cm]
+{\large\textbf{Dr. Sunil C. K.}}\\
+Assistant Professor
+\vfill
+\includegraphics[width=2.55in]{iiit_dharwad_logo.png}\\[0.35cm]
+{\Large\textbf{INDIAN INSTITUTE OF INFORMATION TECHNOLOGY DHARWAD}}\\[0.2cm]
+DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING\\[0.4cm]
+11 November 2026
+\end{center}
+\end{titlepage}
+
+\newpage
+\thispagestyle{empty}
+\begin{center}\emph{\huge Certificate}\end{center}
+\vspace{1.5cm}
+This is to certify that the project entitled \textbf{Human Activity Recognition Using Image and Skeleton-Based Methods} is a record of the Mini Project coursework completed by the students listed below during the academic year 2026--27. The work is submitted in partial fulfilment of the requirements for the degree of Bachelor of Technology in Computer Science and Engineering.
+\vspace{1.2cm}
+\begin{center}
+\begin{tabular}{cl}
+\textbf{Roll No.} & \textbf{Name} \\
+\midrule
+23BCS071 & Kothapally Anjan Reddy \\
+23BCS026 & Babhale Rohan Laxmikant\\
+23BCS075 & Kshitij Shende
+\end{tabular}
+\end{center}
+\vfill
+\begin{flushright}
+Dr. Sunil C. K.\\
+(Project Supervisor)
+\end{flushright}
+
+\newpage
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\listoffigures
+\newpage
+\listoftables
+\newpage
+\pagenumbering{arabic}
+
+\section{Introduction}
+Human Activity Recognition (HAR) means identifying what action a person is doing from visual information such as images or videos. Tennis stroke recognition is a fine-grained task: many strokes look similar, and the differences can be small changes in body movement during a swing. This makes it difficult to recognize a stroke from only one or a few video frames.
+
+This project uses the public THETIS (Three-dimensional Tennis Shots) dataset. It contains 1,980 RGB videos of 12 tennis strokes performed by 55 players. Each player performed each stroke three times. The 12 classes are backhand, backhand2hands, backhand\_slice, backhand\_volley, forehand\_flat, forehand\_openstands, forehand\_slice, forehand\_volley, flat\_service, kick\_service, slice\_service, and smash~\cite{gourgari2013thetis}.
+
+The project was completed in two parts. The first pipeline used transfer learning with an ImageNet-pretrained ResNet50 convolutional neural network (CNN) to classify still frames from the videos. It tested one midpoint frame and three frames sampled across each video. The second pipeline was added as an extension. It used a pretrained YOLO11m-pose detector to find 17 body points in each frame, then compared a model using one midpoint pose (Model A) with a model using the full sequence of 64 resampled poses (Model B).
+
+The videos do not show a tennis ball. The missing ball and the small differences between some strokes make the three service classes especially difficult. Another study using THETIS also reported frequent confusion among serve types and related strokes~\cite{hovad2024classification}.
+
+To make the evaluation fair, both pipelines used a subject-wise split: all videos of one player were assigned to only one of the training, validation, or test sets. This prevents the model from seeing the same player in both training and testing. On the held-out test players, Model B reached 68.0\% average accuracy across five training runs. The report also compares this result with the photo pipeline and discusses why the comparison has limits.
+
+\clearpage
+\section{Related Work}
+\subsection{THETIS dataset}
+Gourgari and colleagues introduced THETIS as a dataset for studying tennis action recognition. The full dataset contains several modalities, including RGB, depth, and skeleton information. This project used the 1,980 RGB clips, covering 12 actions and 55 players~\cite{gourgari2013thetis}.
+
+\subsection{Image classification and ResNet50}
+ResNet uses shortcut connections that help train deep neural networks. The ResNet paper introduced networks with different depths for image recognition~\cite{he2016deep}. In this project, ResNet50 was initialized with weights trained on ImageNet, a large image recognition dataset~\cite{russakovsky2015imagenet}. Transfer learning allowed the model to start with general image features and then adapt its final layers to tennis strokes.
+
+\subsection{Video and pose-based recognition}
+SlowFast is a video recognition method that processes information at different frame rates to capture both appearance and motion~\cite{feichtenhofer2019slowfast}. Hovad and colleagues evaluated SlowFast models on THETIS and reported about 74\% test accuracy for their best setup. They also described confusion between some serve classes and other similar strokes~\cite{hovad2024classification}. Their result is useful background, but it is not directly comparable to ours because their model and evaluation setup differ.
+
+Pose-based recognition uses body landmarks, such as shoulders, wrists, hips, and knees, instead of relying only on image pixels. The pose detector used here is Ultralytics YOLO11m-pose, which predicts COCO-format body keypoints~\cite{jocher2024yolo11,lin2014microsoft}. The models in this project use those points to represent a player's pose and movement through a swing.
+
+\clearpage
+\section{Data and Methods}
+\subsection{Dataset and class labels}
+THETIS contains 55 players: 31 beginners and 24 more experienced players. Every player performed each of 12 strokes three times, giving 1,980 RGB videos. The clips were recorded with a Kinect camera at approximately 640 by 480 pixels and 17--18 frames per second. Their lengths range from about 24 to 150 frames~\cite{gourgari2013thetis}.
+
+\begin{table}[H]
+\centering
+\caption{Tennis stroke classes used in the project.}
+\begin{tabularx}{\textwidth}{lY lY}
+\toprule
+\textbf{Group} & \textbf{Classes} & \textbf{Group} & \textbf{Classes} \\
+\midrule
+Backhand & backhand, backhand2hands, backhand\_slice, backhand\_volley & Forehand & forehand\_flat, forehand\_openstands, forehand\_slice, forehand\_volley \\
+Serve & flat\_service, kick\_service, slice\_service & Overhead & smash \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Subject-wise split}
+The split was created once with seed 42 and reused in both pipelines. The split script separated beginner and experienced players before assigning people to groups. This gave 39 training players, 8 validation players, and 8 test players. No player appears in more than one group.
+
+\begin{table}[H]
+\centering
+\caption{Subject-wise dataset split.}
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Set} & \textbf{Players} & \textbf{Videos} & \textbf{Videos per class} \\
+\midrule
+Training & 39 & 1,404 & 117 \\
+Validation & 8 & 288 & 24 \\
+Test & 8 & 288 & 24 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ResNet50 photo pipeline}
+The photo pipeline first extracted frames from each RGB video. One version used the middle frame. A second version sampled frames at 25\%, 50\%, and 75\% of the video. The extracted images were copied into training, validation, and test folders using the shared player split.
+
+The dataset loader resized images to 224 by 224 pixels, converted them to tensors, and applied ImageNet normalization. During training only, it used random horizontal flips, rotations up to 15 degrees, and brightness and contrast changes. The validation and test images received resizing and normalization only.
+
+The model started with ImageNet-pretrained ResNet50 weights. The final layer was replaced with a 12-class output layer. Training had two phases. First, only the new output layer was trained while the rest of the network was frozen, using Adam with a learning rate of 0.001. Next, the last residual block and the output layer were trained at a lower learning rate of 0.00001. Batch-normalization statistics were kept fixed. Validation accuracy was used to save the best model and stop training when it stopped improving. Adam is an optimization method used to update a model's weights during training~\cite{kingma2015adam}.
+
+For the three-frame setup, frames were first scored separately. A separate per-video result was calculated by averaging the three predicted class-probability values for each clip and choosing the highest average. This combines predictions; it does not train the model to understand frame order.
+
+\subsection{Skeleton pipeline}
+The supplied THETIS skeleton videos were incomplete and were not joint-coordinate files suitable for this model. The project therefore extracted new poses from the RGB videos using YOLO11m-pose at an image size of 640. The detector identifies 17 body points per frame, including the nose, eyes, ears, shoulders, elbows, wrists, hips, knees, and ankles~\cite{jocher2024yolo11,lin2014microsoft}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{image_2.png}
+\caption{Example of YOLO11m-pose keypoint detection overlaid on sampled frames of a smash video (p35\_smash\_s1).}
+\label{fig:pose-overlay}
+\end{figure}
+
+During extraction, the largest person box was selected in each frame. Quality checks later found videos where tracking jumped to a bystander. Selected videos were re-extracted by tracking all people and following the chosen player through the clip. A cleaning step marked frames as unreliable if the person was missing, too few key joints had confidence above 0.5, the detected body size changed sharply, or the hip midpoint jumped compared with nearby frames.
+
+Unreliable joint positions were estimated from nearby valid times by linear interpolation. The coordinates were then centered on the midpoint between the hips and divided by the video’s median shoulder-to-hip distance. This reduces the effect of where the player stands in the frame and how large they appear. Each video was resampled to 64 evenly spaced time steps. Each time step contains a pose with 17 points and two coordinates per point.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{image_1.png}
+\caption{Example of a normalized skeleton sequence (p1\_backhand\_s1), shown at steps 0, 9, 18, 27, 36, 45, 54, and 63 of the 64 resampled time steps.}
+\label{fig:pose-sequence}
+\end{figure}
+
+Model A receives only the pose at the middle of the swing. Its 17 points provide 34 coordinate values. Model B receives all 64 poses in order and uses a small 1D convolutional neural network (1D-CNN) to classify the stroke. The final models use no swing-duration input.
+
+During training, the pose sequences could be mirrored left to right, scaled slightly, and changed with small coordinate noise. Mirroring also swaps left and right body-point labels. These changes were applied to training data only.
+
+\subsection{Validation and test procedure}
+Training videos were used to teach the models. Validation videos were used during development to compare settings and decide when to stop training. Test videos were kept aside for the final evaluation. Phase 4b compared six skeleton model settings using five seeds, 42--46. Phase 5 trained fresh models for the final comparison, again using five seeds. The reported skeleton results are the mean and standard deviation of the five test accuracies. The seeds change random training choices; they do not change the player split.
+
+\clearpage
+\section{Results and Discussions}
+\subsection{Validation results}
+The one-frame ResNet50 run reached a best validation accuracy of 26.39\%. The three-frame run reached 20.25\% validation accuracy at epoch 19. The curves below show how training and validation accuracy changed during both runs.
+
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\textwidth,height=5.4cm,xmin=1,xmax=35,ymin=0,ymax=50,
+ xlabel={Epoch},ylabel={Accuracy (\%)},title={One midpoint frame},
+ grid=major,grid style={gray!20},tick label style={font=\footnotesize},
+ label style={font=\small},title style={font=\small},
+ legend style={font=\footnotesize,at={(0.5,-0.24)},anchor=north,legend columns=2,draw=none}]
+\addplot[blue!75!black,very thick] coordinates { (1,11.040) (2,20.370) (3,22.934) (4,27.493) (5,30.840) (6,29.772) (7,31.125) (8,36.610) (9,34.473) (10,40.456) (11,36.111) (12,38.604) (13,36.823) (14,37.464) (15,39.103) (16,38.960) (17,39.601) (18,39.886) (19,40.527) (20,41.453) (21,43.803) (22,40.242) (23,43.162) (24,42.593) (25,44.444) (26,42.735) (27,42.094) (28,43.234) (29,44.017) (30,45.726) (31,43.661) (32,45.655) (33,45.157) (34,46.510) (35,45.299) };
+\addlegendentry{Training}
+\addplot[orange!85!black,very thick,mark=*,mark size=1pt] coordinates { (1,15.278) (2,15.972) (3,17.014) (4,20.139) (5,19.792) (6,20.139) (7,19.097) (8,22.222) (9,21.181) (10,20.833) (11,21.528) (12,22.569) (13,24.653) (14,23.958) (15,23.958) (16,24.306) (17,24.306) (18,25.000) (19,24.653) (20,24.306) (21,25.694) (22,23.958) (23,25.000) (24,24.653) (25,26.389) (26,25.694) (27,25.000) (28,25.347) (29,26.389) (30,26.042) (31,25.347) (32,24.306) (33,25.347) (34,24.306) (35,25.000) };
+\addlegendentry{Validation}
+\addplot[gray,dashed,forget plot] coordinates {(10.5,0)(10.5,50)};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\textwidth,height=5.4cm,xmin=1,xmax=24,ymin=0,ymax=50,
+ xlabel={Epoch},ylabel={Accuracy (\%)},title={Three sampled frames},
+ grid=major,grid style={gray!20},tick label style={font=\footnotesize},
+ label style={font=\small},title style={font=\small},
+ legend style={font=\footnotesize,at={(0.5,-0.24)},anchor=north,legend columns=2,draw=none}]
+\addplot[blue!75!black,very thick] coordinates { (1,14.055) (2,19.777) (3,24.810) (4,25.760) (5,27.398) (6,30.366) (7,30.033) (8,32.502) (9,32.360) (10,33.951) (11,33.523) (12,34.307) (13,33.310) (14,34.615) (15,35.090) (16,34.497) (17,36.254) (18,36.396) (19,36.159) (20,36.538) (21,37.298) (22,37.464) (23,37.797) (24,39.126) };
+\addlegendentry{Training}
+\addplot[orange!85!black,very thick,mark=*,mark size=1pt] coordinates { (1,14.120) (2,17.940) (3,17.593) (4,17.477) (5,17.824) (6,18.519) (7,19.097) (8,18.519) (9,18.519) (10,18.866) (11,19.560) (12,19.444) (13,19.329) (14,19.444) (15,19.560) (16,20.023) (17,19.444) (18,19.097) (19,20.255) (20,19.560) (21,20.139) (22,18.519) (23,18.866) (24,19.907) };
+\addlegendentry{Validation}
+\addplot[gray,dashed,forget plot] coordinates {(10.5,0)(10.5,50)};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{Training and validation accuracy during the two ResNet50 runs. The dashed line marks the start of Phase 2 fine-tuning after epoch 10.}
+\label{fig:resnet-curves}
+\end{figure}
+
+The skeleton ablations helped select the final settings. Table~\ref{tab:ablation} shows the validation accuracy averaged across five seeds. Ordered Model B performed better than its shuffled counterpart. Mirroring improved Model B validation accuracy. Adding video duration made almost no difference, so duration was omitted from the final setup.
+
+\begin{table}[H]
+\centering
+\caption{Skeleton validation comparisons, mean accuracy across five seeds.}
+\label{tab:ablation}
+\begin{tabular}{lc}
+\toprule
+\textbf{Configuration} & \textbf{Validation accuracy} \\
+\midrule
+Model A, single pose, mirroring on & 41.1\% \\
+Model A, single pose, mirroring off & 40.6\% \\
+Model B, ordered, duration on, mirroring on & 66.5\% \\
+Model B, ordered, duration off, mirroring on & 66.7\% \\
+Model B, ordered, duration on, mirroring off & 60.6\% \\
+Model B, shuffled, duration on, mirroring on & 55.9\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Final test results}
+The final evaluation used 288 videos from eight test players who were not in training or validation. For the photo pipeline, the midpoint-frame ResNet50 reached 30.56\% test accuracy. Scoring the three frames separately gave 22.69\% across 864 images. Averaging the three frame predictions per video gave 33.33\% across 288 videos.
+
+For the skeleton pipeline, each result is averaged across five seeds. Model A reached 43.6\% $\pm$ 1.1\%. The shuffled-sequence control reached 56.9\% $\pm$ 1.8\%, and ordered Model B reached 68.0\% $\pm$ 1.4\%. Random guessing across 12 balanced classes would be about 8.3\%.
+
+\begin{table}[H]
+\centering
+\caption{Test accuracy on the held-out player split. Skeleton results are mean $\pm$ standard deviation across five seeds.}
+\label{tab:test}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{Evaluation unit} & \textbf{Test accuracy} \\
+\midrule
+ResNet50, one midpoint frame & 288 videos & 30.56\% \\
+ResNet50, three frames scored separately & 864 images & 22.69\% \\
+ResNet50, three-frame prediction average & 288 videos & 33.33\% \\
+Skeleton Model A, one midpoint pose & 288 videos & 43.6\% $\pm$ 1.1\% \\
+Skeleton shuffled-sequence control & 288 videos & 56.9\% $\pm$ 1.8\% \\
+Skeleton Model B, ordered sequence & 288 videos & 68.0\% $\pm$ 1.4\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ ybar,width=0.94\textwidth,height=7cm,bar width=18pt,
+ ylabel={Test accuracy (\%)},ymin=0,ymax=80,
+ symbolic x coords={f1,f3i,f3a,a,shuf,b},xtick=data,
+ xticklabels={One frame,{Three frames\\individually},{Three-frame\\average},Model A,{Shuffled\\control},{Model B\\ordered}},
+ xticklabel style={font=\footnotesize,align=center},
+ ymajorgrids=true,grid style={gray!20},
+ nodes near coords,nodes near coords style={font=\footnotesize,anchor=south}]
+\addplot+[fill=teal!70!blue,draw=teal!70!blue,error bars/.cd,y dir=both,y explicit,error bar style={line width=0.8pt}] coordinates {
+ (f1,30.56)
+ (f3i,22.69)
+ (f3a,33.33)
+ (a,43.6) +- (0,1.1)
+ (shuf,56.9) +- (0,1.8)
+ (b,68.0) +- (0,1.4)
+};
+\end{axis}
+\end{tikzpicture}
+\caption{Test accuracy for the photo and skeleton approaches. The first three bars show ResNet50 results; the last three show skeleton results. Error bars show the standard deviation across five seeds for skeleton models. The three-frame individual score is measured over 864 images; the other results are measured over 288 videos.}
+\label{fig:test-bars}
+\end{figure}
+
+The three-frame averaging result is not temporal learning: it combines three separate image predictions. The skeleton comparison gives more evidence about movement order. Ordered Model B averaged 68.0\%, while the shuffled control averaged 56.9\%. The same trained ordered Model B was also evaluated with its test poses shuffled; its accuracy fell to 41.4\% $\pm$ 1.6\%. These results suggest that pose order helped the model, but they do not prove that the model understands tennis movement in a human sense.
+
+\subsection{Class-wise errors}
+\setlength{\intextsep}{5pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{4pt}
+The confusion matrices below are for individual runs, not averages across five seeds. The ResNet matrices show one-frame and individual-frame performance. The skeleton matrices show seed 42. Model B’s strongest results were on several backhand and forehand classes, while flat, kick, and slice services remained difficult. The models have no ball trajectory or useful racquet-angle input, which limits the cues available for distinguishing these serves.
+
+\begin{figure}[H]
+\centering
+\includegraphics[height=9.0cm]{confusion_matrix_1frame.png}
+\caption{ResNet50 test confusion matrix using one midpoint frame.}
+\end{figure}
+\begin{figure}[H]
+\centering
+\includegraphics[height=9.0cm]{confusion_matrix_3frame.png}
+\caption{ResNet50 test confusion matrix for three frames scored individually.}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[H]
+\centering
+\includegraphics[height=10.2cm]{test_confusion_A.png}
+\caption{Skeleton Model A test confusion matrix for seed 42 (44.79\% accuracy).}
+\end{figure}
+\begin{figure}[H]
+\centering
+\includegraphics[height=10.2cm]{test_confusion_B.png}
+\caption{Ordered Skeleton Model B test confusion matrix for seed 42 (67.36\% accuracy).}
+\end{figure}
+
+\clearpage
+
+\subsection{Limitations}
+The results should be understood within the limits of this project. The test group contains only eight players, so a different group could give different scores. THETIS contains staged indoor clips rather than real match footage. The videos do not show a tennis ball, and the pipeline does not track racquet angle. Pose errors can also affect the skeleton models, even after quality checks and interpolation.
+
+The photo and skeleton results are not a fully matched comparison. ResNet50 saw one or three still frames, while Model B saw the full swing as a 64-step pose sequence. The ResNet50 was lightly fine-tuned and had relatively low training accuracy, so it may have been underfit. The shuffled control is also imperfect because randomly reordering every pose creates movement jumps that do not occur in a real swing. Finally, all results use one fixed subject split; the five seeds vary training randomness, not which people are in the test set.
+
+\clearpage
+\section{Conclusion}
+This project compared image-based and skeleton-based methods for recognizing 12 tennis strokes in THETIS. The first pipeline used ResNet50 on still frames. The later skeleton pipeline detected body points, cleaned and normalized the poses, and compared a single midpoint pose with an ordered pose sequence.
+
+On the chosen subject-wise split, the best photo result was 33.33\% when three frame predictions were averaged per video. Skeleton Model A reached 43.6\% average test accuracy, and ordered Model B reached 68.0\%. The shuffled control reached 56.9\%. This gives evidence that using the full sequence, including its order, helped on this dataset. It does not establish that skeleton methods are generally better than image or video methods.
+
+Future work could evaluate more subject-wise splits, compare other sequence models, and add racquet or ball information. These changes may help test whether the results hold for more players and improve recognition of similar service types.
+
+\clearpage
+\begin{thebibliography}{9}
+\bibitem{gourgari2013thetis} S. Gourgari, G. Goudelis, K. Karpouzis, and S. Kollias, ``\href{https://openaccess.thecvf.com/content_cvpr_workshops_2013/W08/papers/Gourgari_THETIS_Three_Dimensional_2013_CVPR_paper.pdf}{THETIS: Three Dimensional Tennis Shots a Human Action Dataset},'' in \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition Workshops}, pp. 676--681, 2013. doi: 10.1109/CVPRW.2013.102.
+\bibitem{he2016deep} K. He, X. Zhang, S. Ren, and J. Sun, ``\href{https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html}{Deep Residual Learning for Image Recognition},'' in \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}, pp. 770--778, 2016. doi: 10.1109/CVPR.2016.90.
+\bibitem{russakovsky2015imagenet} O. Russakovsky et al., ``\href{https://doi.org/10.1007/s11263-015-0816-y}{ImageNet Large Scale Visual Recognition Challenge},'' \emph{International Journal of Computer Vision}, vol. 115, no. 3, pp. 211--252, 2015.
+\bibitem{hovad2024classification} E. Hovad, T. Hougaard-Jensen, and L. K. H. Clemmensen, ``\href{https://arxiv.org/abs/2402.02545}{Classification of Tennis Actions Using Deep Learning},'' arXiv:2402.02545, 2024.
+\bibitem{feichtenhofer2019slowfast} C. Feichtenhofer, H. Fan, J. Malik, and K. He, ``\href{https://openaccess.thecvf.com/content_ICCV_2019/html/Feichtenhofer_SlowFast_Networks_for_Video_Recognition_ICCV_2019_paper.html}{SlowFast Networks for Video Recognition},'' in \emph{Proceedings of the IEEE/CVF International Conference on Computer Vision}, pp. 6202--6211, 2019.
+\bibitem{jocher2024yolo11} G. Jocher and J. Qiu, ``Ultralytics YOLO11,'' software, 2024. Available: \url{https://github.com/ultralytics/ultralytics}.
+\bibitem{lin2014microsoft} T.-Y. Lin et al., ``\href{https://doi.org/10.1007/978-3-319-10602-1_48}{Microsoft COCO: Common Objects in Context},'' in \emph{Computer Vision -- ECCV 2014}, pp. 740--755, 2014. doi: 10.1007/978-3-319-10602-1\_48.
+\bibitem{kingma2015adam} D. P. Kingma and J. Ba, ``\href{https://arxiv.org/abs/1412.6980}{Adam: A Method for Stochastic Optimization},'' in \emph{International Conference on Learning Representations}, 2015. arXiv:1412.6980.
+\end{thebibliography}
+
+\end{document}
