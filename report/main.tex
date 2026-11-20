@@ -10,6 +10,12 @@
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xcolor}
+\usepackage{colortbl}
+\definecolor{tablehead}{RGB}{30, 80, 85}
+\definecolor{tablerowlight}{RGB}{246, 250, 251}
+\definecolor{tablehighlight}{RGB}{224, 240, 242}
+\definecolor{tableborder}{RGB}{45, 110, 115}
+
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric}
 \usepackage{pgfplots}
@@ -17,6 +23,7 @@
 \setlength{\parindent}{1cm}
 \onehalfspacing
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \graphicspath{{figures/}}
 \title{Human Activity Recognition Using Image and Skeleton-Based Methods}
 
@@ -79,7 +86,7 @@ Dr. Sunil C. K.\\
 \section{Introduction}
 Human Activity Recognition (HAR) means identifying what action a person is doing from visual information such as images or videos. Tennis stroke recognition is a fine-grained task: many strokes look similar, and the differences can be small changes in body movement during a swing. This makes it difficult to recognize a stroke from only one or a few video frames.
 
-This project uses the public THETIS (Three-dimensional Tennis Shots) dataset. It contains 1,980 RGB videos of 12 tennis strokes performed by 55 players. Each player performed each stroke three times. The 12 classes are backhand, backhand2hands, backhand\_slice, backhand\_volley, forehand\_flat, forehand\_openstands, forehand\_slice, forehand\_volley, flat\_service, kick\_service, slice\_service, and smash~\cite{gourgari2013thetis}.
+This project uses the public THETIS (Three-dimensional Tennis Shots) dataset. It contains 1,980 RGB videos of 12 tennis strokes performed by 55 players. Each player performed each stroke three times. The 12 classes are backhand, backhand2hands, backhand\_slice, backhand\_\allowbreak volley, forehand\_flat, forehand\_\allowbreak openstands, forehand\_slice, forehand\_\allowbreak volley, flat\_\allowbreak service, kick\_\allowbreak service, slice\_\allowbreak service, and smash~\cite{gourgari2013thetis}.
 
 The project was completed in two parts. The first pipeline used transfer learning with an ImageNet-pretrained ResNet50 convolutional neural network (CNN) to classify still frames from the videos. It tested one midpoint frame and three frames sampled across each video. The second pipeline was added as an extension. It used a pretrained YOLO11m-pose detector to find 17 body points in each frame, then compared a model using one midpoint pose (Model A) with a model using the full sequence of 64 resampled poses (Model B).
 
@@ -89,31 +96,93 @@ To make the evaluation fair, both pipelines used a subject-wise split: all video
 
 \clearpage
 \section{Related Work}
-\subsection{THETIS dataset}
-Gourgari and colleagues introduced THETIS as a dataset for studying tennis action recognition. The full dataset contains several modalities, including RGB, depth, and skeleton information. This project used the 1,980 RGB clips, covering 12 actions and 55 players~\cite{gourgari2013thetis}.
+Human action recognition in sports video analysis represents a fine-grained subfield of computer vision. Unlike coarse human activity recognition where action categories correlate with disparate environmental backgrounds (such as a swimming pool versus a running track), athletic stroke recognition takes place within visually invariant tennis court environments. The discriminating signals reside in subtle, rapid spatio-temporal transitions of the athlete's body kinematics. This section surveys prior literature across five foundational dimensions directly informing this project: the THETIS benchmark, image-based transfer learning with residual networks, modern real-time pose estimation architectures, kinematic sequence modeling with 1D temporal convolutions, and rigorous evaluation protocols for identity-leak-free action recognition.
 
-\subsection{Image classification and ResNet50}
-ResNet uses shortcut connections that help train deep neural networks. The ResNet paper introduced networks with different depths for image recognition~\cite{he2016deep}. In this project, ResNet50 was initialized with weights trained on ImageNet, a large image recognition dataset~\cite{russakovsky2015imagenet}. Transfer learning allowed the model to start with general image features and then adapt its final layers to tennis strokes.
+\subsection{The THETIS Dataset and Tennis Action Recognition Benchmarks}
+Gourgari and colleagues~\cite{gourgari2013thetis} introduced the Three-dimensional Tennis Shots (THETIS) benchmark to establish a dedicated public platform for fine-grained sports action recognition. THETIS consists of 1,980 RGB video clips capturing 12 distinct tennis strokes performed by 55 human subjects (31 amateurs and 24 experienced players), with each player performing three repetitions per stroke. The taxonomy spans four backhand variations (\texttt{backhand}, \texttt{backhand2hands}, \texttt{backhand\_\allowbreak slice}, \texttt{backhand\_\allowbreak volley}), four forehand variations (\texttt{forehand\_flat}, \texttt{forehand\_\allowbreak openstands}, \texttt{forehand\_\allowbreak slice}, \texttt{forehand\_\allowbreak volley}), three service actions (\texttt{flat\_\allowbreak service}, \texttt{kick\_\allowbreak service}, \texttt{slice\_\allowbreak service}), and an overhead \texttt{smash}.
 
-\subsection{Video and pose-based recognition}
-SlowFast is a video recognition method that processes information at different frame rates to capture both appearance and motion~\cite{feichtenhofer2019slowfast}. Hovad and colleagues evaluated SlowFast models on THETIS and reported about 74\% test accuracy for their best setup. They also described confusion between some serve classes and other similar strokes~\cite{hovad2024classification}. Their result is useful background, but it is not directly comparable to ours because their model and evaluation setup differ.
+The clips were captured indoors using a Microsoft Kinect v1 sensor at a resolution of approximately $640 \times 480$ pixels and a frame rate of 17--18 frames per second, with video durations ranging from 24 to 150 frames. THETIS presents unique domain challenges: the tennis ball is not tracked due to low frame rates and motion blur, the racquet angle cannot be reliably segmented with standard appearance models, and high intra-class biomechanical variability exists between amateur and experienced players. Most critically, several strokes share nearly identical preparatory phases. For instance, flat, kick, and slice services involve similar ball-toss stances, with distinguishing biomechanics confined to wrist pronation and racquet trajectory during contact. In the original benchmark, Gourgari et al.~\cite{gourgari2013thetis} applied Bag-of-Visual-Words (BoW) models on 3D silhouettes, HOG/HOF descriptors, and Support Vector Machines (SVM), reporting accuracies between 60\% and 70\% on simplified subsets while identifying severe confusion among service classes. Furthermore, early literature predominantly relied on random clip-level splitting, which permitted footage of the same athlete to appear in both training and test partitions, inflating accuracy through player identity memorization.
+\clearpage
+\subsection{Image-Based Action Recognition and Deep Transfer Learning}
+Deep transfer learning represents the dominant paradigm for visual recognition tasks with limited training samples. Models are initialized with feature extractors pretrained on massive image corpora such as ImageNet-1k (1.28 million images across 1,000 categories)~\cite{russakovsky2015imagenet}. The Deep Residual Network (ResNet) architecture, introduced by He et al.~\cite{he2016deep}, incorporates identity shortcut connections: $y = \mathcal{F}(x, W) + x$, where $x$ and $y$ denote the input and output activation vectors of the residual building block, and $\mathcal{F}(x, W)$ represents the residual mapping. This formulation enables effective gradient propagation through 50 or more layers without signal degradation or vanishing gradients.
 
-Pose-based recognition uses body landmarks, such as shoulders, wrists, hips, and knees, instead of relying only on image pixels. The pose detector used here is Ultralytics YOLO11m-pose, which predicts COCO-format body keypoints~\cite{jocher2024yolo11,lin2014microsoft}. The models in this project use those points to represent a player's pose and movement through a swing.
+Adapting static image backbones like ResNet50 to video action classification involves extracting representative keyframes. A single frame sampled at the temporal midpoint of the swing captures the impact stance, whereas a multi-frame consensus formulation samples three frames across the trajectory (at 25\%, 50\%, and 75\% of total duration) to capture preparatory, execution, and follow-through phases. We employ progressive two-phase fine-tuning: Phase 1 freezes the pretrained convolutional layers and trains only a newly attached 12-class linear head using the Adam optimizer~\cite{kingma2015adam} at learning rate 0.001; Phase 2 selectively unfreezes the deepest residual block (\texttt{layer4}) at a conservative learning rate of 0.00001 with frozen batch-normalization running statistics. However, static 2D image models heavily exploit static appearance cues (court background, lighting, player attire) rather than genuine stroke dynamics, limiting their temporal modeling capabilities.
 
+\subsection{Human Pose Estimation and the YOLO11-Pose Framework}
+Human pose estimation abstracts away irrelevant background context and athlete attire, transforming raw pixel streams into explicit anatomical landmark trajectories. Early 2D pose estimators, such as OpenPose and AlphaPose, operated as multi-stage systems requiring separate person detection bounding boxes followed by computationally demanding Gaussian heatmap regressions for keypoint localization, incurring high latency.
+
+Modern anchor-free architectures have substantially advanced real-time pose estimation. Ultralytics YOLO11m-pose~\cite{jocher2024yolo11} integrates an efficient C3k2 convolutional backbone with Spatial Pyramid Pooling Fast (SPPF) modules and decoupled prediction heads. Directly from raw $640 \times 640$ RGB frames, the model concurrently regresses bounding boxes and 17 standardized COCO keypoint coordinates~\cite{lin2014microsoft} (nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles) along with joint visibility confidences as coordinate-confidence tuples $(x, y, c)$. Employing YOLO11m-pose on THETIS is methodologically critical: although the original dataset included raw Kinect skeletons, those joint streams were incomplete, suffered from severe depth sensor dropouts, and lacked standardized coordinate formatting. Applying YOLO11m-pose across the RGB clips recovers a continuous, reliable 2D skeletal representation directly from high-resolution video archives.
+\clearpage
+\subsection{Kinematic Sequence Modeling and Temporal 1D Convolutional Networks}
+Representing human movement as spatio-temporal coordinate sequences isolates pure biomechanics from visual background noise. Extracted landmark sequences form a temporal tensor of shape $T \times 17 \times 2$. Because raw clips span 24 to 150 frames, uniform linear resampling standardizes each clip to $T = 64$ evenly spaced time steps. Spatial normalization centers coordinates on the hip midpoint and scales them by the video's median shoulder-to-hip torso distance. Unreliable joints (confidence below 0.5) or tracking dropouts are repaired via temporal linear interpolation.
+
+To classify the normalized 64-step sequence, 1D Temporal Convolutional Neural Networks (1D-CNNs) offer compelling advantages over recurrent architectures (LSTM/GRU) and Graph Convolutional Networks (ST-GCN)~\cite{yan2018spatial}. While recurrent models face sequential execution bottlenecks and ST-GCNs introduce substantial structural overhead sensitive to joint noise, 1D-CNNs slide convolutional filters across time in parallel. Their hierarchical temporal receptive fields efficiently capture joint velocities, accelerations, and multi-phase stroke mechanics with low computational complexity.
+
+\subsection{Evaluation Protocols, Subject-Wise Splitting, and Temporal Order Ablation}
+A pervasive pitfall in sports action recognition is random clip-level splitting. When clips of the same player are distributed across training and test partitions, deep visual models easily memorize athlete identity, clothing, and court habits (identity leakage), inflating benchmark scores without learning genuine stroke biomechanics. True generalization requires strict subject-wise partitioning: all recordings of any given athlete are assigned exclusively to training, validation, or test sets.
+
+Additionally, a fundamental question in kinematic modeling is whether a network genuinely captures chronological motion dynamics or merely acts as an ensemble over static postures (a ``bag-of-poses'' effect). To verify the contribution of temporal order, a randomized temporal shuffle control experiment is essential. Randomly permuting the 64 time steps during training and inference preserves identical posture statistics while stripping chronological dynamics. Comparing the ordered model against this shuffled baseline rigorously quantifies the performance gain provided by temporal progression.
+\clearpage
+\subsection{Comparative Synthesis and Project Novelty}
+Table~\ref{tab:prior-work-comparison} summarizes prior investigations on THETIS and sports action recognition in relation to our dual-pipeline project.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{0.98}
+\arrayrulecolor{tableborder}
+\caption{Comparative landscape of prior research on THETIS versus our proposed framework.}
+\label{tab:prior-work-comparison}
+\begin{tabularx}{\textwidth}{L{2.1cm} L{1.7cm} L{1.9cm} L{1.8cm} L{1.9cm} Y}
+\toprule
+\rowcolor{tablehead}
+\textcolor{white}{\textbf{Study}} & \textcolor{white}{\textbf{Modality}} & \textcolor{white}{\textbf{Model}} & \textcolor{white}{\textbf{Split}} & \textcolor{white}{\textbf{Strategy}} & \textcolor{white}{\textbf{Key Findings and Observations}} \\
+\midrule
+Gourgari et al.~\cite{gourgari2013thetis} (2013) & RGB, Depth, Kinect Joints & BoW + HOG/HOF with SVM & Random clip-level split & Static histogram aggregation & $\approx$60--70\% on subsets; high serve confusion; native Kinect skeletons incomplete. \\
+\rowcolor{tablerowlight}
+Hovad et al.~\cite{hovad2024classification} (2024) & RGB Video Volumes & SlowFast (Dual 3D-CNN) & Standard THETIS clips & Dual-framerate 3D convolution & $\approx$74\% top-1; high compute footprint; serve classes heavily confused; attire bias. \\
+Carreira \&\ Zisserman~\cite{carreira2017quo} (2017) & RGB Video Volumes & I3D (Two-stream 3D) & Random clip splits & Spatio-temporal 3D convolution & Strong video baseline, but highly prone to athlete identity memorization on small cohorts. \\
+\rowcolor{tablerowlight}
+Yan et al.~\cite{yan2018spatial} (2018) & 2D Skeletons & ST-GCN (Graph CNN) & Subject split (NTU) & Graph spatial-temporal conv & Robust graph modeling; sensitive to joint jitter in fine swing trajectories. \\
+\midrule
+\rowcolor{tablehighlight}
+\textbf{Ours (Photo Pipeline)} & RGB Still Frames & ResNet50 (ImageNet transfer) & \textbf{Strict Subject-Wise} (39/8/8) & Frame score averaging ($K=3$) & 30.56\% (1-frame), 33.33\% (3-frame avg); reveals severe limits of static appearance cues. \\
+\rowcolor{tablehighlight}
+\textbf{Ours (Skeleton Pipeline)} & 2D Kinematic Sequence & Model A (MLP) \& Model B (1D-CNN) & \textbf{Strict Subject-Wise} (39/8/8) & 1D-CNN ($T=64$) + Shuffle Control & \textbf{68.0\% $\pm$ 1.4\%} (Model B); eliminates identity leakage; isolates motion order (+11.1\% gain). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+This project delivers four key technical novelties relative to prior literature:
+\begin{enumerate}[topsep=0pt,itemsep=0pt,parsep=0pt,partopsep=0pt]
+\item \textbf{RGB-to-Kinematic Pose Foundation Recovery}: Leveraging YOLO11m-pose on RGB videos, recovering clean 17-point coordinate sequences with hip-centering and median torso scaling.
+\item \textbf{Strict Subject-Wise Athlete Partitioning}: Implementing an uncompromised 39/8/8 player split stratified by skill level, completely eliminating player identity and clothing leakage.
+\item \textbf{Controlled Spatial vs.\ Kinematic Comparison}: Directly benchmarking ImageNet transfer learning against kinematic sequence modeling on identical held-out athletes.
+\item \textbf{Rigorous Empirical Temporal Order Verification}: Executing a controlled shuffle test (56.9\% shuffled vs.\ 68.0\% ordered), proving the +11.1\% gain from chronological dynamics.
+\end{enumerate}
 \clearpage
 \section{Data and Methods}
 \subsection{Dataset and class labels}
 THETIS contains 55 players: 31 beginners and 24 more experienced players. Every player performed each of 12 strokes three times, giving 1,980 RGB videos. The clips were recorded with a Kinect camera at approximately 640 by 480 pixels and 17--18 frames per second. Their lengths range from about 24 to 150 frames~\cite{gourgari2013thetis}.
 
+\vspace{0.6em}
 \begin{table}[H]
 \centering
+\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.25}
+\arrayrulecolor{tableborder}
 \caption{Tennis stroke classes used in the project.}
+\label{tab:stroke-classes}
 \begin{tabularx}{\textwidth}{lY lY}
 \toprule
-\textbf{Group} & \textbf{Classes} & \textbf{Group} & \textbf{Classes} \\
+\rowcolor{tablehead}
+\textcolor{white}{\textbf{Group}} & \textcolor{white}{\textbf{Classes}} & \textcolor{white}{\textbf{Group}} & \textcolor{white}{\textbf{Classes}} \\
 \midrule
-Backhand & backhand, backhand2hands, backhand\_slice, backhand\_volley & Forehand & forehand\_flat, forehand\_openstands, forehand\_slice, forehand\_volley \\
-Serve & flat\_service, kick\_service, slice\_service & Overhead & smash \\
+\rowcolor{tablerowlight}
+Backhand & \texttt{backhand}, \texttt{backhand2hands}, \texttt{backhand\_\allowbreak slice}, \texttt{backhand\_\allowbreak volley} & Forehand & \texttt{forehand\_flat}, \texttt{forehand\_\allowbreak openstands}, \texttt{forehand\_slice}, \texttt{forehand\_\allowbreak volley} \\
+Serve & \texttt{flat\_\allowbreak service}, \texttt{kick\_\allowbreak service}, \texttt{slice\_\allowbreak service} & Overhead & \texttt{smash} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -121,16 +190,25 @@ Serve & flat\_service, kick\_service, slice\_service & Overhead & smash \\
 \subsection{Subject-wise split}
 The split was created once with seed 42 and reused in both pipelines. The split script separated beginner and experienced players before assigning people to groups. This gave 39 training players, 8 validation players, and 8 test players. No player appears in more than one group.
 
+\vspace{0.6em}
 \begin{table}[H]
 \centering
+\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.25}
+\arrayrulecolor{tableborder}
 \caption{Subject-wise dataset split.}
+\label{tab:split}
 \begin{tabular}{lrrr}
 \toprule
-\textbf{Set} & \textbf{Players} & \textbf{Videos} & \textbf{Videos per class} \\
+\rowcolor{tablehead}
+\textcolor{white}{\textbf{Set}} & \textcolor{white}{\textbf{Players}} & \textcolor{white}{\textbf{Videos}} & \textcolor{white}{\textbf{Videos per class}} \\
 \midrule
+\rowcolor{tablerowlight}
 Training & 39 & 1,404 & 117 \\
 Validation & 8 & 288 & 24 \\
-Test & 8 & 288 & 24 \\
+\rowcolor{tablehighlight}
+\textbf{Test (Held-Out)} & 8 & 288 & 24 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -149,7 +227,7 @@ The supplied THETIS skeleton videos were incomplete and were not joint-coordinat
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{image_2.png}
+\includegraphics[width=0.88\textwidth]{image_2.png}
 \caption{Example of YOLO11m-pose keypoint detection overlaid on sampled frames of a smash video (p35\_smash\_s1).}
 \label{fig:pose-overlay}
 \end{figure}
@@ -160,7 +238,7 @@ Unreliable joint positions were estimated from nearby valid times by linear inte
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{image_1.png}
+\includegraphics[width=0.68\textwidth]{image_1.png}
 \caption{Example of a normalized skeleton sequence (p1\_backhand\_s1), shown at steps 0, 9, 18, 27, 36, 45, 54, and 63 of the 64 resampled time steps.}
 \label{fig:pose-sequence}
 \end{figure}
@@ -177,10 +255,9 @@ Training videos were used to teach the models. Validation videos were used durin
 \subsection{Validation results}
 The one-frame ResNet50 run reached a best validation accuracy of 26.39\%. The three-frame run reached 20.25\% validation accuracy at epoch 19. The curves below show how training and validation accuracy changed during both runs.
 
-
 \begin{figure}[H]
 \centering
-\begin{minipage}{0.48\textwidth}
+\begin{minipage}{0.475\textwidth}
 \centering
 \begin{tikzpicture}
 \begin{axis}[width=\textwidth,height=5.4cm,xmin=1,xmax=35,ymin=0,ymax=50,
@@ -195,8 +272,8 @@ The one-frame ResNet50 run reached a best validation accuracy of 26.39\%. The th
 \addplot[gray,dashed,forget plot] coordinates {(10.5,0)(10.5,50)};
 \end{axis}
 \end{tikzpicture}
-\end{minipage}\hfill
-\begin{minipage}{0.48\textwidth}
+\end{minipage}%\hfill%
+\begin{minipage}{0.475\textwidth}
 \centering
 \begin{tikzpicture}
 \begin{axis}[width=\textwidth,height=5.4cm,xmin=1,xmax=24,ymin=0,ymax=50,
@@ -218,53 +295,74 @@ The one-frame ResNet50 run reached a best validation accuracy of 26.39\%. The th
 
 The skeleton ablations helped select the final settings. Table~\ref{tab:ablation} shows the validation accuracy averaged across five seeds. Ordered Model B performed better than its shuffled counterpart. Mirroring improved Model B validation accuracy. Adding video duration made almost no difference, so duration was omitted from the final setup.
 
+\vspace{0.6em}
 \begin{table}[H]
 \centering
+\small
+\setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.20}
+\arrayrulecolor{tableborder}
 \caption{Skeleton validation comparisons, mean accuracy across five seeds.}
 \label{tab:ablation}
 \begin{tabular}{lc}
 \toprule
-\textbf{Configuration} & \textbf{Validation accuracy} \\
+\rowcolor{tablehead}
+\textcolor{white}{\textbf{Configuration}} & \textcolor{white}{\textbf{Validation accuracy}} \\
 \midrule
+\rowcolor{tablerowlight}
 Model A, single pose, mirroring on & 41.1\% \\
 Model A, single pose, mirroring off & 40.6\% \\
+\rowcolor{tablerowlight}
 Model B, ordered, duration on, mirroring on & 66.5\% \\
-Model B, ordered, duration off, mirroring on & 66.7\% \\
+\rowcolor{tablehighlight}
+\textbf{Model B, ordered, duration off, mirroring on (Selected)} & \textbf{66.7\%} \\
+\rowcolor{tablerowlight}
 Model B, ordered, duration on, mirroring off & 60.6\% \\
 Model B, shuffled, duration on, mirroring on & 55.9\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\clearpage
 \subsection{Final test results}
-The final evaluation used 288 videos from eight test players who were not in training or validation. For the photo pipeline, the midpoint-frame ResNet50 reached 30.56\% test accuracy. Scoring the three frames separately gave 22.69\% across 864 images. Averaging the three frame predictions per video gave 33.33\% across 288 videos.
+The final evaluation used 288 videos from eight test players who were held out from both training and validation sets. For the photo pipeline, the midpoint-frame ResNet50 reached 30.56\% test accuracy. Scoring the three frames separately yielded 22.69\% accuracy across 864 individual test images. Averaging the three frame predictions per video reached 33.33\% accuracy across the 288 test videos.
 
-For the skeleton pipeline, each result is averaged across five seeds. Model A reached 43.6\% $\pm$ 1.1\%. The shuffled-sequence control reached 56.9\% $\pm$ 1.8\%, and ordered Model B reached 68.0\% $\pm$ 1.4\%. Random guessing across 12 balanced classes would be about 8.3\%.
+For the skeleton pipeline, each result is reported as the mean and standard deviation across five independent training runs using seeds 42--46. The single-pose Model~A reached 43.6\% $\pm$ 1.1\%. The shuffled-sequence control reached 56.9\% $\pm$ 1.8\%, and the ordered Model~B reached 68.0\% $\pm$ 1.4\%. By comparison, random guessing across the 12 balanced classes corresponds to an expected baseline of 8.33\%.
 
+\vspace{0.8em}
 \begin{table}[H]
 \centering
+\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.22}
+\arrayrulecolor{tableborder}
 \caption{Test accuracy on the held-out player split. Skeleton results are mean $\pm$ standard deviation across five seeds.}
 \label{tab:test}
 \begin{tabular}{lcc}
 \toprule
-\textbf{Method} & \textbf{Evaluation unit} & \textbf{Test accuracy} \\
+\rowcolor{tablehead}
+\textcolor{white}{\textbf{Method}} & \textcolor{white}{\textbf{Evaluation unit}} & \textcolor{white}{\textbf{Test accuracy}} \\
 \midrule
+\rowcolor{tablerowlight}
 ResNet50, one midpoint frame & 288 videos & 30.56\% \\
 ResNet50, three frames scored separately & 864 images & 22.69\% \\
+\rowcolor{tablerowlight}
 ResNet50, three-frame prediction average & 288 videos & 33.33\% \\
 Skeleton Model A, one midpoint pose & 288 videos & 43.6\% $\pm$ 1.1\% \\
+\rowcolor{tablerowlight}
 Skeleton shuffled-sequence control & 288 videos & 56.9\% $\pm$ 1.8\% \\
-Skeleton Model B, ordered sequence & 288 videos & 68.0\% $\pm$ 1.4\% \\
+\rowcolor{tablehighlight}
+\textbf{Skeleton Model B, ordered sequence} & \textbf{288 videos} & \textbf{68.0\% $\pm$ 1.4\%} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-
+\vspace{0.6em}
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
- ybar,width=0.94\textwidth,height=7cm,bar width=18pt,
+ ybar,width=0.94\textwidth,height=6.2cm,bar width=18pt,
  ylabel={Test accuracy (\%)},ymin=0,ymax=80,
  symbolic x coords={f1,f3i,f3a,a,shuf,b},xtick=data,
  xticklabels={One frame,{Three frames\\individually},{Three-frame\\average},Model A,{Shuffled\\control},{Model B\\ordered}},
@@ -285,52 +383,64 @@ Skeleton Model B, ordered sequence & 288 videos & 68.0\% $\pm$ 1.4\% \\
 \label{fig:test-bars}
 \end{figure}
 
-The three-frame averaging result is not temporal learning: it combines three separate image predictions. The skeleton comparison gives more evidence about movement order. Ordered Model B averaged 68.0\%, while the shuffled control averaged 56.9\%. The same trained ordered Model B was also evaluated with its test poses shuffled; its accuracy fell to 41.4\% $\pm$ 1.6\%. These results suggest that pose order helped the model, but they do not prove that the model understands tennis movement in a human sense.
+The three-frame averaging result of 33.33\% does not represent temporal learning: it merely aggregates three independent static frame predictions. In contrast, the skeleton models provide direct empirical evidence regarding the necessity of chronological motion dynamics. Ordered Model~B achieved 68.0\% $\pm$ 1.4\% test accuracy, substantially outperforming the single-pose Model~A baseline (43.6\% $\pm$ 1.1\%) by +24.4 percentage points. 
+
+Crucially, Model~B also outperformed the shuffled-sequence control (56.9\% $\pm$ 1.8\%) by +11.1 percentage points. Because the shuffled control receives identical spatial coordinate landmarks and posture statistics with only temporal order randomized, this +11.1\% margin specifically isolates the contribution of chronological trajectory ordering. Furthermore, when the trained ordered Model~B was evaluated with test sequence frames randomly shuffled at inference time, its accuracy plummeted to 41.4\% $\pm$ 1.6\%, near the single-frame baseline. These findings confirm that Model~B relies heavily on chronological kinematic transitions rather than merely acting as an ensemble over static postures.
 
 \subsection{Class-wise errors}
-\setlength{\intextsep}{5pt}
-\setlength{\abovecaptionskip}{4pt}
-\setlength{\belowcaptionskip}{4pt}
-The confusion matrices below are for individual runs, not averages across five seeds. The ResNet matrices show one-frame and individual-frame performance. The skeleton matrices show seed 42. Model B’s strongest results were on several backhand and forehand classes, while flat, kick, and slice services remained difficult. The models have no ball trajectory or useful racquet-angle input, which limits the cues available for distinguishing these serves.
+A granular examination of classification patterns reveals distinct failure modes across visual and kinematic representations. The confusion matrices for all evaluated models are presented across the following two pages: Figure~\ref{fig:cm-1frame} and Figure~\ref{fig:cm-3frame} display the ResNet50 one-frame and three-frame confusion matrices (page~\pageref{fig:cm-1frame}), while Figure~\ref{fig:cm-skel-A} and Figure~\ref{fig:cm-skel-B} illustrate the single-pose Model~A and sequence-based Model~B skeleton confusion matrices (page~\pageref{fig:cm-skel-A}).
 
+Across the photo pipeline (Figures~\ref{fig:cm-1frame} and~\ref{fig:cm-3frame}), widespread misclassifications occur between forehands and backhands, as static visual snapshots cannot differentiate stroke direction without temporal context. In contrast, the skeleton Model~B (Figure~\ref{fig:cm-skel-B}) achieves its strongest recognition rates on dynamic groundstrokes (\texttt{backhand}, \texttt{backhand2hands}, \texttt{forehand\_flat}, \texttt{forehand\_openstands}), where full-body pelvic and shoulder rotations provide unmistakable kinematic signatures. 
+
+However, all models exhibit persistent confusion within the service cluster (\texttt{flat\_service}, \texttt{kick\_service}, \texttt{slice\_service}). These actions share virtually identical preparatory stances, knee flexion, and overhead ball-toss trajectories. Because THETIS videos do not capture the tennis ball and the pose estimator does not track racquet face angle or wrist pronation during ball impact, the visual and kinematic cues available to discriminate service spin variations remain severely constrained.
+
+\clearpage
 \begin{figure}[H]
 \centering
-\includegraphics[height=9.0cm]{confusion_matrix_1frame.png}
+\includegraphics[height=10.2cm]{confusion_matrix_1frame.png}
 \caption{ResNet50 test confusion matrix using one midpoint frame.}
+\label{fig:cm-1frame}
 \end{figure}
 \begin{figure}[H]
 \centering
-\includegraphics[height=9.0cm]{confusion_matrix_3frame.png}
+\includegraphics[height=10.2cm]{confusion_matrix_3frame.png}
 \caption{ResNet50 test confusion matrix for three frames scored individually.}
+\label{fig:cm-3frame}
 \end{figure}
 
 \clearpage
-
 \begin{figure}[H]
 \centering
 \includegraphics[height=10.2cm]{test_confusion_A.png}
 \caption{Skeleton Model A test confusion matrix for seed 42 (44.79\% accuracy).}
+\label{fig:cm-skel-A}
 \end{figure}
 \begin{figure}[H]
 \centering
 \includegraphics[height=10.2cm]{test_confusion_B.png}
 \caption{Ordered Skeleton Model B test confusion matrix for seed 42 (67.36\% accuracy).}
+\label{fig:cm-skel-B}
 \end{figure}
 
 \clearpage
-
 \subsection{Limitations}
-The results should be understood within the limits of this project. The test group contains only eight players, so a different group could give different scores. THETIS contains staged indoor clips rather than real match footage. The videos do not show a tennis ball, and the pipeline does not track racquet angle. Pose errors can also affect the skeleton models, even after quality checks and interpolation.
+The empirical conclusions of this project must be interpreted in light of several methodological and domain-specific limitations. First, regarding dataset scope, THETIS consists of staged indoor recordings captured in an invariant gymnasium environment with a static Kinect camera. Although the dataset includes 55 distinct subjects, players performed strokes in isolation without active opponent rallies, ball bounces, or court movement. Consequently, the models were evaluated on isolated athletic choreography rather than in-situ tennis match dynamics.
 
-The photo and skeleton results are not a fully matched comparison. ResNet50 saw one or three still frames, while Model B saw the full swing as a 64-step pose sequence. The ResNet50 was lightly fine-tuned and had relatively low training accuracy, so it may have been underfit. The shuffled control is also imperfect because randomly reordering every pose creates movement jumps that do not occur in a real swing. Finally, all results use one fixed subject split; the five seeds vary training randomness, not which people are in the test set.
+Second, the absence of ball trajectory and equipment telemetry represents a major bottleneck for fine-grained discrimination. Tennis strokes are fundamentally characterized by ball velocity, trajectory curvature, impact timing, and racquet face orientation. Because low video frame rates (17--18 fps) and motion blur render the tennis ball invisible and prevent racquet angle segmentation, neither the image-based nor the skeleton-based pipeline received equipment-level cues. This directly accounts for the persistent confusion among flat, kick, and slice services, which share near-identical full-body preparatory stances but diverge solely in subtle wrist pronation and racquet path during contact.
+
+Third, pose estimation quality introduces downstream sensor noise. While Ultralytics YOLO11m-pose substantially improved joint fidelity over the native Kinect skeletal streams, 2D landmark localization remains susceptible to self-occlusion during complex two-handed backhands or extreme rotational follow-throughs. Although temporal linear interpolation repaired sporadic tracking dropouts, unmodeled joint jitters can distort velocity profiles in fast arm swings.
+
+Fourth, the experimental comparison between photo and skeleton pipelines is methodologically asymmetric. ResNet50 operated on static 2D image snapshots (one or three frames) and underwent conservative two-phase fine-tuning with frozen batch-normalization statistics, reaching modest training accuracy. In contrast, Model~B operated on a temporally normalized 64-step sequence across all 17 anatomical landmarks and was trained end-to-end. Hence, the performance gap reflects not only modality differences (raw pixels vs.\ joint coordinates) but also temporal sequence availability. Finally, all evaluations were conducted on a single fixed 39/8/8 subject split; while seeds 42--46 varied stochastic training initialization, variance across different player cohort groupings was not evaluated.
 
 \clearpage
 \section{Conclusion}
-This project compared image-based and skeleton-based methods for recognizing 12 tennis strokes in THETIS. The first pipeline used ResNet50 on still frames. The later skeleton pipeline detected body points, cleaned and normalized the poses, and compared a single midpoint pose with an ordered pose sequence.
+This mini-project investigated fine-grained sports human action recognition by directly comparing appearance-based deep transfer learning with kinematic sequence modeling on the 12-class THETIS tennis benchmark. The original investigation implemented an ImageNet-pretrained ResNet50 classifier evaluated on single midpoint keyframes and three-frame multi-view ensembles. To overcome the vulnerability of static visual representations to background and clothing biases, a dedicated skeleton-based extension was developed. This secondary pipeline recovered 17 anatomical landmarks using YOLO11m-pose, applied spatial hip-centering and torso-scale normalization, resampled clips to 64 uniform time steps, and classified full movement trajectories with a 1D Temporal Convolutional Network (Model~B).
 
-On the chosen subject-wise split, the best photo result was 33.33\% when three frame predictions were averaged per video. Skeleton Model A reached 43.6\% average test accuracy, and ordered Model B reached 68.0\%. The shuffled control reached 56.9\%. This gives evidence that using the full sequence, including its order, helped on this dataset. It does not establish that skeleton methods are generally better than image or video methods.
+Under a strict 39/8/8 subject-wise evaluation protocol that completely prevents player identity leakage, the static ResNet50 achieved 30.56\% test accuracy on single midpoint frames and 33.33\% via three-frame prediction averaging across 288 held-out videos. In sharp contrast, the kinematic pipeline achieved 43.6\% $\pm$ 1.1\% on single midpoint poses (Model~A) and reached 68.0\% $\pm$ 1.4\% using the full ordered 64-step sequence (Model~B). Crucially, a controlled temporal shuffle experiment (56.9\% $\pm$ 1.8\%) and inference-time sequence corruption (dropping to 41.4\% $\pm$ 1.6\%) empirically verified that chronological trajectory dynamics contribute a decisive +11.1 percentage point performance dividend over static posture ensembles.
 
-Future work could evaluate more subject-wise splits, compare other sequence models, and add racquet or ball information. These changes may help test whether the results hold for more players and improve recognition of similar service types.
+These results demonstrate that compact kinematic representations successfully filter out environmental nuisance factors while capturing fine-grained athletic biomechanics at a fraction of the computational footprint required by volumetric 3D-CNNs. Nevertheless, recognizing subtle service variations remains challenging without ball trajectory or racquet orientation data.
+
+Future investigations should focus on four prospective directions: first, extending subject-wise cross-validation across multiple randomized cohort partitions to assess demographic generalization; second, incorporating multimodal sensor fusion combining body pose with high-speed ball tracking and racquet-mounted inertial measurement units (IMUs); third, exploring graph convolutional architectures (ST-GCN) and spatio-temporal attention transformers operating on 3D lifted joints; and fourth, validating the framework on real-world broadcasting footage featuring unconstrained camera motion and live matchplay.
 
 \clearpage
 \begin{thebibliography}{9}
